@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AudioControl — Sound, Under Control</title>
+<meta name="description" content="Since 1977, AudioControl has engineered the amplifiers, processors and speakers that put every frequency exactly where it belongs. Designed and built in Mountlake Terrace, Washington.">
+<meta name="theme-color" content="#0A0B0D">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12.5' fill='none' stroke='%23E2703A' stroke-width='2.5'/%3E%3Cline x1='16' y1='16' x2='16' y2='5.5' stroke='%23E2703A' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&amp;f[]=general-sans@400,500,600,700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+
+<style>
+  /* ---------------------------------- */
+  /* Tokens                              */
+  /* ---------------------------------- */
+  :root{
+    --bg-950:#0A0B0D;
+    --bg-900:#121417;
+    --bg-800:#1B1E22;
+    --bg-800-soft:#191c20;
+    --line:rgba(255,255,255,0.09);
+    --line-strong:rgba(255,255,255,0.16);
+    --text-100:#EDEFF1;
+    --text-300:#A6ADB4;
+    --text-500:#71787E;
+    --copper:#E2703A;
+    --copper-dim:#B85A2E;
+    --copper-soft:rgba(226,112,58,0.14);
+
+    --font-display:'Clash Display','General Sans',-apple-system,'Helvetica Neue',Arial,sans-serif;
+    --font-body:'General Sans',-apple-system,'Helvetica Neue',Arial,sans-serif;
+    --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+
+    --container-max:1360px;
+    --edge:clamp(1.25rem,4vw,3rem);
+    --section-pad:clamp(5rem,9vw,9.5rem);
+  }
+
+  *,*::before,*::after{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;scroll-behavior:auto !important;}
+  }
+
+  body{
+    margin:0;
+    background:var(--bg-950);
+    color:var(--text-100);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    overflow-x:hidden;
+  }
+
+  img,svg{display:block;max-width:100%;}
+  a{color:inherit;text-decoration:none;}
+  ul{list-style:none;margin:0;padding:0;}
+  address{font-style:normal;}
+  button{font-family:inherit;}
+
+  h1,h2,h3{
+    font-family:var(--font-display);
+    font-weight:600;
+    margin:0;
+    letter-spacing:-0.02em;
+    color:var(--text-100);
+  }
+
+  ::selection{background:var(--copper);color:var(--bg-950);}
+
+  :focus-visible{
+    outline:2px solid var(--copper);
+    outline-offset:3px;
+  }
+
+  .container{
+    max-width:var(--container-max);
+    margin-inline:auto;
+    padding-inline:var(--edge);
+  }
+
+  .visually-hidden{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+  }
+
+  /* ---------------------------------- */
+  /* Grain overlay                       */
+  /* ---------------------------------- */
+  .grain{
+    position:fixed;inset:0;z-index:60;pointer-events:none;
+    opacity:0.035;
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------------------------------- */
+  /* Loader                              */
+  /* ---------------------------------- */
+  .loader{
+    position:fixed;inset:0;z-index:999;
+    background:var(--bg-950);
+    display:flex;align-items:center;justify-content:center;
+    transition:opacity .7s ease, visibility .7s ease;
+  }
+  .loader.hidden{opacity:0;visibility:hidden;pointer-events:none;}
+  .loader-mark{width:46px;height:46px;}
+  .loader-mark .needle{transform-origin:16px 16px;animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------------------------------- */
+  /* WebGL stage (fixed, behind content) */
+  /* ---------------------------------- */
+  .webgl-stage{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    opacity:0;
+    transition:opacity 1.4s ease;
+  }
+  .webgl-stage.on{opacity:1;}
+  .webgl-stage canvas{width:100%;height:100%;display:block;}
+
+  /* ---------------------------------- */
+  /* Nav                                 */
+  /* ---------------------------------- */
+  .nav{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    padding-block:1.25rem;
+    transition:background .4s ease, padding .4s ease, border-color .4s ease;
+    border-bottom:1px solid transparent;
+  }
+  .nav.scrolled{
+    background:rgba(10,11,13,0.82);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    padding-block:0.85rem;
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    max-width:var(--container-max);margin-inline:auto;padding-inline:var(--edge);
+    display:flex;align-items:center;justify-content:space-between;gap:2rem;
+  }
+  .brand{display:flex;align-items:center;gap:0.65rem;font-family:var(--font-display);font-weight:600;font-size:1.05rem;color:var(--text-100);}
+  .brand svg{width:26px;height:26px;flex:none;}
+  .brand:hover .needle{transition:transform .5s cubic-bezier(.2,.7,.3,1);transform:rotate(140deg);}
+  .nav-links{display:flex;align-items:center;gap:2.1rem;}
+  .nav-links a{font-size:0.94rem;color:var(--text-300);transition:color .2s ease;}
+  .nav-links a:hover{color:var(--text-100);}
+  .nav-cta{display:flex;align-items:center;gap:1.4rem;}
+  .nav-toggle{
+    display:none;width:34px;height:34px;border:none;background:none;cursor:pointer;
+    position:relative;flex:none;
+  }
+  .nav-toggle span{
+    position:absolute;left:6px;right:6px;height:2px;background:var(--text-100);
+    transition:transform .3s ease, opacity .3s ease;
+  }
+  .nav-toggle span:nth-child(1){top:12px;}
+  .nav-toggle span:nth-child(2){top:20px;}
+  body.nav-open .nav-toggle span:nth-child(1){transform:translateY(4px) rotate(45deg);}
+  body.nav-open .nav-toggle span:nth-child(2){transform:translateY(-4px) rotate(-45deg);}
+
+  /* ---------------------------------- */
+  /* Buttons                             */
+  /* ---------------------------------- */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    padding:0.85rem 1.5rem;
+    font-size:0.94rem;font-weight:500;
+    border:1px solid var(--line-strong);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+    transition:background .25s ease, border-color .25s ease, color .25s ease, transform .2s ease;
+    white-space:nowrap;
+  }
+  .btn-primary{background:var(--copper);border-color:var(--copper);color:var(--bg-950);font-weight:600;}
+  .btn-primary:hover{background:#ef7c44;transform:translateY(-1px);}
+  .btn-ghost{background:transparent;color:var(--text-100);}
+  .btn-ghost:hover{border-color:var(--copper);color:var(--copper);}
+  .btn-text{border:none;clip-path:none;padding:0.85rem 0.2rem;color:var(--text-300);}
+  .btn-text:hover{color:var(--text-100);}
+  .btn-sm{padding:0.6rem 1.15rem;font-size:0.85rem;}
+
+  /* ---------------------------------- */
+  /* Hero                                */
+  /* ---------------------------------- */
+  .hero{
+    position:relative;min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+    padding-top:6rem;
+    z-index:1;
+  }
+  .hero-inner{max-width:640px;}
+  .hero-title{
+    font-size:clamp(2.6rem,6.6vw,5.75rem);
+    line-height:1.02;
+  }
+  .hero-title .line{display:block;overflow:hidden;}
+  .hero-title .line span{display:block;transform:translateY(110%);}
+  .hero-sub{
+    margin-top:1.75rem;max-width:36ch;
+    font-size:clamp(1.05rem,1.4vw,1.2rem);
+    color:var(--text-300);
+    opacity:0;transform:translateY(14px);
+  }
+  .hero-actions{margin-top:2.5rem;display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem 1.75rem;opacity:0;transform:translateY(14px);}
+  .scroll-cue{
+    position:absolute;left:var(--edge);bottom:2.4rem;
+    display:flex;align-items:center;gap:0.7rem;
+    font-size:0.8rem;color:var(--text-500);
+    opacity:0;
+  }
+  .scroll-cue .stem{width:1px;height:34px;background:var(--line-strong);position:relative;overflow:hidden;}
+  .scroll-cue .stem::after{
+    content:"";position:absolute;top:-100%;left:0;width:100%;height:100%;background:var(--copper);
+    animation:cue 2.2s ease-in-out infinite;
+  }
+  @keyframes cue{0%{top:-100%;}60%{top:100%;}100%{top:100%;}}
+
+  /* ---------------------------------- */
+  /* Stats                               */
+  /* ---------------------------------- */
+  .stats{position:relative;z-index:1;padding-block:clamp(3rem,6vw,4.5rem);border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(10,11,13,0.55);backdrop-filter:blur(6px);}
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);}
+  .stat{padding-inline:clamp(1rem,2vw,2rem);border-left:1px solid var(--line);display:flex;flex-direction:column;gap:0.4rem;}
+  .stat:first-child{border-left:none;padding-left:0;}
+  .stat-num{font-family:var(--font-display);font-weight:600;font-size:clamp(1.6rem,3vw,2.4rem);color:var(--text-100);}
+  .stat-label{font-size:0.85rem;color:var(--text-500);max-width:20ch;}
+
+  /* ---------------------------------- */
+  /* Philosophy (pinned narrative)       */
+  /* ---------------------------------- */
+  .philosophy{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;}
+  .phil-inner{width:100%;display:grid;grid-template-columns:1fr;}
+  .phil-panels{position:relative;max-width:620px;min-height:260px;}
+  .phil-panel{
+    position:absolute;inset:0;
+    opacity:0;transform:translateY(10px);
+    transition:opacity .5s ease, transform .6s ease;
+    pointer-events:none;
+  }
+  .phil-panel.active{opacity:1;transform:translateY(0);pointer-events:auto;}
+  .phil-panel h2{font-size:clamp(1.9rem,3.6vw,2.9rem);line-height:1.08;}
+  .phil-panel p{margin-top:1.25rem;color:var(--text-300);max-width:46ch;font-size:1.05rem;}
+  .phil-progress{display:flex;gap:0.6rem;margin-top:2.75rem;}
+  .phil-progress .dot{width:28px;height:2px;background:var(--line-strong);transition:background .3s ease;}
+  .phil-progress .dot.active{background:var(--copper);}
+  .phil-static{display:none;}
+
+  /* ---------------------------------- */
+  /* Section head (shared)               */
+  /* ---------------------------------- */
+  .section-head{max-width:640px;margin-bottom:clamp(2.5rem,5vw,4rem);}
+  .section-head h2{font-size:clamp(2rem,4vw,3.1rem);}
+  .section-head p{margin-top:1rem;color:var(--text-300);font-size:1.08rem;max-width:44ch;}
+
+  /* ---------------------------------- */
+  /* Technology / bento                  */
+  /* ---------------------------------- */
+  .technology{position:relative;z-index:1;padding-block:var(--section-pad);background:var(--bg-950);}
+  .bento{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:minmax(190px,auto);gap:1px;background:var(--line);border:1px solid var(--line);}
+  .bento-card{background:var(--bg-950);padding:2rem;display:flex;flex-direction:column;justify-content:flex-end;gap:0.9rem;transition:background .3s ease;}
+  .bento-card:hover{background:var(--bg-900);}
+  .bento-card h3{font-size:1.2rem;font-weight:500;}
+  .bento-card p{color:var(--text-300);font-size:0.96rem;max-width:34ch;}
+  .bento-large{grid-column:span 2;grid-row:span 2;padding:2.6rem;}
+  .bento-large h3{font-size:1.55rem;}
+  .bento-icon{width:34px;height:34px;color:var(--copper);}
+
+  /* ---------------------------------- */
+  /* Products (scroll-jack gallery)      */
+  /* ---------------------------------- */
+  .products{position:relative;z-index:1;background:var(--bg-900);overflow:hidden;}
+  .products-head{padding-top:var(--section-pad);padding-bottom:2.5rem;}
+  .products-viewport{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .products-viewport::-webkit-scrollbar{display:none;}
+  .products-track{display:flex;padding-bottom:var(--section-pad);scroll-snap-type:x proximity;}
+  .product-panel{
+    flex:0 0 min(88vw,560px);
+    margin-right:clamp(1.25rem,3vw,2.5rem);
+    border:1px solid var(--line);
+    padding:2.4rem;
+    display:flex;flex-direction:column;justify-content:space-between;
+    min-height:420px;
+    background:linear-gradient(160deg,var(--bg-800) 0%,var(--bg-900) 100%);
+    transform:perspective(900px) rotateX(0deg) rotateY(0deg);
+    transition:border-color .3s ease;
+    scroll-snap-align:start;
+  }
+  .product-panel:hover{border-color:var(--line-strong);}
+  .product-panel .kicker{font-size:0.85rem;color:var(--text-500);font-family:var(--font-mono);}
+  .product-panel h3{font-size:clamp(1.5rem,2.6vw,2.1rem);margin-top:0.9rem;font-weight:500;}
+  .product-panel p{color:var(--text-300);margin-top:1rem;max-width:38ch;}
+  .product-panel .p-visual{
+    align-self:flex-end;width:120px;height:120px;opacity:0.9;color:var(--copper);
+  }
+  .products-track .product-panel:last-child{margin-right:var(--edge);}
+
+  /* ---------------------------------- */
+  /* Craftsmanship                       */
+  /* ---------------------------------- */
+  .craftsmanship{position:relative;z-index:1;min-height:70vh;display:flex;align-items:center;overflow:hidden;}
+  .craft-bg{
+    position:absolute;inset:-8% -8%;z-index:0;
+    background:
+      radial-gradient(circle at 78% 30%, rgba(226,112,58,0.16), transparent 55%),
+      radial-gradient(circle at 20% 80%, rgba(255,255,255,0.05), transparent 45%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,0.025) 0 2px, transparent 2px 42px),
+      var(--bg-950);
+  }
+  .craft-content{position:relative;z-index:1;max-width:640px;}
+  .craft-content h2{font-size:clamp(2rem,4.2vw,3.4rem);}
+  .craft-content p{margin-top:1.4rem;color:var(--text-300);font-size:1.1rem;max-width:46ch;}
+
+  /* ---------------------------------- */
+  /* Reviews                             */
+  /* ---------------------------------- */
+  .reviews{position:relative;z-index:1;padding-block:var(--section-pad);background:var(--bg-950);}
+  .reviews-head{display:grid;grid-template-columns:0.85fr 1.15fr;gap:clamp(2rem,5vw,5rem);align-items:start;margin-bottom:clamp(3rem,6vw,5rem);}
+  .rating-block{border-top:1px solid var(--line);padding-top:1.75rem;}
+  .rating-num{font-family:var(--font-display);font-weight:600;font-size:clamp(3.5rem,7vw,5.5rem);line-height:1;color:var(--text-100);}
+  .stars{display:flex;gap:0.3rem;margin-top:0.9rem;}
+  .stars svg{width:18px;height:18px;color:var(--copper);}
+  .rating-fine{margin-top:0.9rem;color:var(--text-500);font-size:0.92rem;}
+  .rating-fine a{color:var(--text-300);border-bottom:1px solid var(--line-strong);}
+  .rating-fine a:hover{color:var(--copper);border-color:var(--copper);}
+  .pull-quotes{display:flex;flex-direction:column;gap:1.9rem;}
+  .pull-quotes blockquote{margin:0;border-top:1px solid var(--line);padding-top:1.4rem;}
+  .pull-quotes p{font-family:var(--font-display);font-weight:500;font-size:clamp(1.15rem,1.8vw,1.5rem);line-height:1.35;color:var(--text-100);}
+  .pull-quotes cite{display:block;margin-top:0.7rem;font-style:normal;font-size:0.85rem;color:var(--text-500);}
+
+  .reviews-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .review-card{background:var(--bg-950);padding:2rem 1.9rem;}
+  .review-card .rc-name{font-weight:600;font-size:1rem;}
+  .review-card .rc-meta{font-size:0.82rem;color:var(--text-500);margin-top:0.2rem;}
+  .review-card p{margin-top:1.1rem;color:var(--text-300);font-size:0.98rem;}
+
+  /* ---------------------------------- */
+  /* Visit                               */
+  /* ---------------------------------- */
+  .visit{position:relative;z-index:1;padding-block:var(--section-pad);background:var(--bg-900);}
+  .visit-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(2rem,6vw,4rem);align-items:center;}
+  .visit-info h2{font-size:clamp(2rem,4vw,3.1rem);}
+  .visit-info address{margin-top:1.5rem;font-size:1.15rem;color:var(--text-100);line-height:1.5;}
+  .visit-info .hours{margin-top:0.6rem;color:var(--text-300);}
+  .visit-actions{margin-top:2.25rem;display:flex;flex-wrap:wrap;gap:1rem;}
+  .visit-visual{display:flex;align-items:center;justify-content:center;}
+  .radar{width:min(100%,320px);height:auto;}
+  .radar .ring{transform-origin:center;animation:ping 3s ease-out infinite;opacity:0;}
+  .radar .ring2{animation-delay:1s;}
+  .radar .ring3{animation-delay:2s;}
+  @keyframes ping{0%{transform:scale(0.5);opacity:0.55;}100%{transform:scale(1.6);opacity:0;}}
+
+  /* ---------------------------------- */
+  /* Footer                              */
+  /* ---------------------------------- */
+  .footer{position:relative;z-index:1;background:var(--bg-950);border-top:1px solid var(--line);padding-top:clamp(3.5rem,6vw,5.5rem);}
+  .footer-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:2.5rem;padding-bottom:3rem;}
+  .footer-brand .brand{margin-bottom:0.9rem;}
+  .footer-brand p{color:var(--text-500);max-width:32ch;font-size:0.92rem;}
+  .footer-col h4{font-size:0.85rem;color:var(--text-500);font-weight:500;margin-bottom:1rem;}
+  .footer-col ul{display:flex;flex-direction:column;gap:0.7rem;}
+  .footer-col a{color:var(--text-300);font-size:0.94rem;transition:color .2s ease;}
+  .footer-col a:hover{color:var(--copper);}
+  .footer-bottom{border-top:1px solid var(--line);padding-block:1.5rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;color:var(--text-500);font-size:0.82rem;}
+
+  @media (min-width:900px){
+    .products-viewport{overflow:hidden;}
+  }
+
+  /* ---------------------------------- */
+  /* Responsive                          */
+  /* ---------------------------------- */
+  @media (max-width:899px){
+    .philosophy{min-height:0;padding-block:var(--section-pad);}
+    .phil-panels{position:relative;min-height:0;}
+    .phil-panel{position:relative;opacity:1;transform:none;pointer-events:auto;margin-bottom:3rem;}
+    .phil-panel:last-child{margin-bottom:0;}
+    .phil-progress{display:none;}
+  }
+
+  @media (max-width:900px){
+    .nav-links{
+      display:none;position:absolute;top:100%;left:0;right:0;
+      flex-direction:column;align-items:flex-start;gap:0;
+      background:var(--bg-900);border-bottom:1px solid var(--line);
+      padding:0.5rem var(--edge) 1.25rem;
+    }
+    .nav-links a{padding:0.7rem 0;width:100%;}
+    body.nav-open .nav-links{display:flex;}
+    .nav-toggle{display:block;}
+    .nav-cta .btn-sm{display:none;}
+
+    .stats-grid{grid-template-columns:repeat(2,1fr);row-gap:1.75rem;}
+    .stat:nth-child(odd){border-left:none;padding-left:0;}
+    .stat:nth-child(even){border-left:1px solid var(--line);}
+
+    .bento{grid-template-columns:repeat(2,1fr);}
+    .bento-large{grid-column:span 2;grid-row:span 1;}
+
+    .reviews-head{grid-template-columns:1fr;}
+    .reviews-grid{grid-template-columns:1fr;}
+
+    .visit-grid{grid-template-columns:1fr;}
+    .visit-visual{order:-1;}
+  }
+
+  @media (max-width:600px){
+    .stats-grid{grid-template-columns:1fr 1fr;}
+    .footer-grid{grid-template-columns:1fr;gap:2rem;}
+  }
+</style>
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+
+<div class="loader" id="loader" aria-hidden="true">
+  <svg class="loader-mark" viewBox="0 0 32 32" fill="none">
+    <circle cx="16" cy="16" r="12.5" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+    <line class="needle" x1="16" y1="16" x2="16" y2="5.5" stroke="#E2703A" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<div class="webgl-stage" id="webglStage" aria-hidden="true">
+  <canvas id="core-canvas"></canvas>
+</div>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#top" class="brand">
+      <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12.5" stroke="#E2703A" stroke-width="2.5"/><line class="needle" x1="16" y1="16" x2="16" y2="5.5" stroke="#E2703A" stroke-width="2.5" stroke-linecap="round"/></svg>
+      AudioControl
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#technology">Technology</a>
+      <a href="#products">Products</a>
+      <a href="#philosophy">Story</a>
+      <a href="#reviews">Reviews</a>
+      <a href="#visit">Visit</a>
+    </nav>
+    <div class="nav-cta">
+      <a href="#visit" class="btn btn-ghost btn-sm">Visit us</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero" id="top">
+    <div class="hero-inner container">
+      <h1 class="hero-title">
+        <span class="line"><span>Sound,</span></span>
+        <span class="line"><span>under control.</span></span>
+      </h1>
+      <p class="hero-sub">Since 1977, engineers in Mountlake Terrace, Washington have built the amplifiers, processors and speakers that put every frequency exactly where it belongs.</p>
+      <div class="hero-actions">
+        <a href="#technology" class="btn btn-primary">Explore the technology</a>
+        <a href="#reviews" class="btn btn-text">Read what drivers are saying</a>
+      </div>
+    </div>
+    <div class="scroll-cue"><span class="stem"></span>Scroll</div>
+  </section>
+
+  <section class="stats">
+    <div class="container stats-grid">
+      <div class="stat"><span class="stat-num">1977</span><span class="stat-label">Founded in Washington</span></div>
+      <div class="stat"><span class="stat-num">4.9</span><span class="stat-label">Average customer rating</span></div>
+      <div class="stat"><span class="stat-num">18</span><span class="stat-label">Verified reviews</span></div>
+      <div class="stat"><span class="stat-num">WA</span><span class="stat-label">Headquarters &amp; engineering, Mountlake Terrace</span></div>
+    </div>
+  </section>
+
+  <section class="philosophy" id="philosophy">
+    <div class="container phil-inner">
+      <div class="phil-panels" id="philPanels">
+        <div class="phil-panel active" data-index="0">
+          <h2>Every amplifier is temperature-controlled.</h2>
+          <p>Heat is the fastest way to lose accuracy. Onboard sensors regulate output before the system ever has the chance to drift.</p>
+        </div>
+        <div class="phil-panel" data-index="1">
+          <h2>The chassis is machined, not stamped.</h2>
+          <p>Real aluminum holds its shape under vibration and road heat, year after year — the difference customers say they can feel before they even hear a note.</p>
+        </div>
+        <div class="phil-panel" data-index="2">
+          <h2>The Epicenter puts the bass back.</h2>
+          <p>Modern mastering and undersized drivers roll off the low end long before it reaches your ears. Epicenter senses what's missing and restores it in real time.</p>
+        </div>
+        <div class="phil-panel" data-index="3">
+          <h2>Someone who knows the product answers the phone.</h2>
+          <p>Support isn't a call-center script. Customers who called in the '90s and customers who call today get the same depth of knowledge on the line.</p>
+        </div>
+      </div>
+      <div class="phil-progress" id="philProgress" aria-hidden="true">
+        <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="technology" id="technology">
+    <div class="container">
+      <div class="section-head">
+        <h2>Engineering, not marketing.</h2>
+        <p>The details that separate a system you can hear from one you can feel.</p>
+      </div>
+      <div class="bento">
+        <div class="bento-card bento-large">
+          <svg class="bento-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+          <h3>Adaptive digital signal processing</h3>
+          <p>Director-series processors listen to the signal and correct it in real time — tuning the system to the cabin instead of forcing the cabin to adapt to the system.</p>
+        </div>
+        <div class="bento-card">
+          <svg class="bento-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg>
+          <h3>Temperature-controlled amplification</h3>
+          <p>Output throttles automatically before heat becomes distortion, so the tenth hour sounds like the first.</p>
+        </div>
+        <div class="bento-card">
+          <svg class="bento-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M9 4v16"/></svg>
+          <h3>Machined aluminum chassis</h3>
+          <p>Precision-milled housings dissipate heat and resist the vibration that shortens the life of stamped-metal alternatives.</p>
+        </div>
+        <div class="bento-card">
+          <svg class="bento-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+          <h3>Epicenter bass restoration</h3>
+          <p>A dedicated processor rebuilds the low frequencies lost to compressed audio and undersized speakers.</p>
+        </div>
+        <div class="bento-card">
+          <svg class="bento-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 3v18h18"/><path d="M7 15l3-5 3 3 4-7"/></svg>
+          <h3>Audio analysis heritage</h3>
+          <p>Before building car audio, AudioControl built the analyzers studios used to measure it — a discipline that still shapes every product.</p>
+        </div>
+        <div class="bento-card">
+          <svg class="bento-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M8 10v4M12 8v8M16 10v4"/></svg>
+          <h3>Seamless OEM integration</h3>
+          <p>Interfaces built to work with a vehicle's factory wiring, so a system upgrade doesn't mean tearing out the dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="products" id="products">
+    <div class="container products-head">
+      <div class="section-head" style="margin-bottom:0;">
+        <h2>Four decades of range.</h2>
+        <p>Scroll to move through the lineup.</p>
+      </div>
+    </div>
+    <div class="products-viewport">
+      <div class="products-track" id="productsTrack">
+        <article class="product-panel">
+          <div>
+            <span class="kicker">01 — PROCESSORS</span>
+            <h3>Epicenter Processors</h3>
+            <p>Restores the bass lost to modern mastering and undersized drivers, in any system, factory or aftermarket.</p>
+          </div>
+          <svg class="p-visual" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.2"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+        </article>
+        <article class="product-panel">
+          <div>
+            <span class="kicker">02 — SIGNAL</span>
+            <h3>Director Series DSPs</h3>
+            <p>Digital signal processing that listens to the cabin and tunes itself around it.</p>
+          </div>
+          <svg class="p-visual" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 12h3l2-7 3 14 3-14 3 7h6"/></svg>
+        </article>
+        <article class="product-panel">
+          <div>
+            <span class="kicker">03 — POWER</span>
+            <h3>Amplifiers</h3>
+            <p>Temperature-controlled power, built to run at full output for the life of the car.</p>
+          </div>
+          <svg class="p-visual" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="7" width="18" height="10" rx="1"/><path d="M7 7v10M17 7v10"/></svg>
+        </article>
+        <article class="product-panel">
+          <div>
+            <span class="kicker">04 — TRANSDUCTION</span>
+            <h3>Speakers &amp; Subwoofers</h3>
+            <p>Drivers engineered to work with the electronics, not just alongside them.</p>
+          </div>
+          <svg class="p-visual" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="craftsmanship">
+    <div class="craft-bg" id="craftBg" aria-hidden="true"></div>
+    <div class="container craft-content">
+      <h2>Built to be trusted with what matters.</h2>
+      <p>Customers notice the weight before they notice the sound — speakers and amplifiers substantial enough that quality feels obvious in the hand, long before the system is ever powered on.</p>
+    </div>
+  </section>
+
+  <section class="reviews" id="reviews">
+    <div class="container">
+      <div class="reviews-head">
+        <div class="rating-block">
+          <span class="rating-num">4.9</span>
+          <div class="stars" aria-hidden="true">
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 1l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L10 14.9 4.4 18l1.4-6.2L1 7.5l6.4-.6z"/></svg>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 1l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L10 14.9 4.4 18l1.4-6.2L1 7.5l6.4-.6z"/></svg>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 1l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L10 14.9 4.4 18l1.4-6.2L1 7.5l6.4-.6z"/></svg>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 1l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L10 14.9 4.4 18l1.4-6.2L1 7.5l6.4-.6z"/></svg>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 1l2.6 5.9 6.4.6-4.8 4.3 1.4 6.2L10 14.9 4.4 18l1.4-6.2L1 7.5l6.4-.6z"/></svg>
+          </div>
+          <p class="rating-fine">Based on 18 verified Google reviews · <a href="https://www.google.com/maps/search/?api=1&amp;query=AudioControl+22410+70th+Ave+W+%231+Mountlake+Terrace+WA+98043" target="_blank" rel="noopener">View on Google</a></p>
+        </div>
+        <div class="pull-quotes">
+          <blockquote><p>I can't wait to try out the rest of their line up.</p><cite>Google review</cite></blockquote>
+          <blockquote><p>I've been in car audio as a hobby for 33+ years. I'll never use any other brand.</p><cite>Google review</cite></blockquote>
+          <blockquote><p>This will be my go-to place for anything audio related.</p><cite>Google review</cite></blockquote>
+        </div>
+      </div>
+
+      <div class="reviews-grid">
+        <article class="review-card">
+          <p class="rc-name">Efrain Rivera</p>
+          <p class="rc-meta">4 reviews · 17 photos</p>
+          <p>AudioControl offers great car audio products, and the customer service is A1. My Epicenter has noticeably improved the bass — you can feel the difference.</p>
+        </article>
+        <article class="review-card">
+          <p class="rc-name">Julian Morris</p>
+          <p class="rc-meta">Local Guide · 24 reviews</p>
+          <p>A full AudioControl setup — ten amps, all AudioControl speakers. Loud, crystal clear, and built with real material. Even the amps are temperature-controlled.</p>
+        </article>
+        <article class="review-card">
+          <p class="rc-name">Joe Thomas</p>
+          <p class="rc-meta">Local Guide · 67 reviews</p>
+          <p>Been using AudioControl gear since 1996, first as a customer, now running my own shop. Their phone support is as good today as it was back then.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="visit" id="visit">
+    <div class="container visit-grid">
+      <div class="visit-info">
+        <h2>Come hear it yourself.</h2>
+        <address>22410 70th Ave W #1<br>Mountlake Terrace, WA 98043</address>
+        <p class="hours">Closes today at 5 PM · Opens 8 AM tomorrow</p>
+        <div class="visit-actions">
+          <a href="tel:+14257758461" class="btn btn-primary">Call (425) 775-8461</a>
+          <a href="https://www.google.com/maps/search/?api=1&amp;query=AudioControl+22410+70th+Ave+W+%231+Mountlake+Terrace+WA+98043" target="_blank" rel="noopener" class="btn btn-ghost">Get directions</a>
+        </div>
+      </div>
+      <div class="visit-visual">
+        <svg class="radar" viewBox="0 0 200 200" fill="none">
+          <circle class="ring" cx="100" cy="100" r="40" stroke="#E2703A" stroke-width="1.5"/>
+          <circle class="ring ring2" cx="100" cy="100" r="40" stroke="#E2703A" stroke-width="1.5"/>
+          <circle class="ring ring3" cx="100" cy="100" r="40" stroke="#E2703A" stroke-width="1.5"/>
+          <circle cx="100" cy="100" r="4.5" fill="#E2703A"/>
+          <path d="M100 100 L100 40" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+          <path d="M100 100 L152 130" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+          <path d="M100 100 L48 130" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-grid">
+    <div class="footer-brand">
+      <a href="#top" class="brand">
+        <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12.5" stroke="#E2703A" stroke-width="2.5"/><line x1="16" y1="16" x2="16" y2="5.5" stroke="#E2703A" stroke-width="2.5" stroke-linecap="round"/></svg>
+        AudioControl
+      </a>
+      <p>Engineered in Mountlake Terrace, Washington since 1977.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Explore</h4>
+      <ul>
+        <li><a href="#technology">Technology</a></li>
+        <li><a href="#products">Products</a></li>
+        <li><a href="#philosophy">Story</a></li>
+        <li><a href="#reviews">Reviews</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <ul>
+        <li><a href="#visit">Visit</a></li>
+        <li><a href="tel:+14257758461">(425) 775-8461</a></li>
+        <li><a href="https://www.google.com/maps/search/?api=1&amp;query=AudioControl+22410+70th+Ave+W+%231+Mountlake+Terrace+WA+98043" target="_blank" rel="noopener">Directions</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <p>© 2026 AudioControl. All rights reserved.</p>
+    <p>Concept site · Not the official AudioControl website.</p>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
